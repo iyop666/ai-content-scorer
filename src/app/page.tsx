@@ -125,7 +125,12 @@ export default function Home() {
             {/* Total Score */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Overall Score</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  Overall Score
+                  {result.language === "id" && <Badge variant="secondary">🇮🇩 Indonesian</Badge>}
+                  {result.language === "mixed" && <Badge variant="secondary">🇮🇩🇬🇧 Mixed</Badge>}
+                  {result.language === "en" && <Badge variant="secondary">🇬🇧 English</Badge>}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">

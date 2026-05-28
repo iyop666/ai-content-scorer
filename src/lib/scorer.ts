@@ -1,5 +1,6 @@
-// AI Content Scorer — v2
+// AI Content Scorer — v2.1
 // Merged from: stop-slop, claude-slop-detector, humanize-writing-skill, slop-cop
+// + Indonesian language detection (ChatGPT/Gemini AI patterns)
 // Scores text on 7 dimensions with tiered severity
 
 export type ScoreResult = {
@@ -14,6 +15,7 @@ export type AnalysisResult = {
   scores: ScoreResult[];
   total: number;
   maxTotal: number;
+  language: "en" | "id" | "mixed";
   tier1Hits: string[];
   tier2Hits: string[];
   tier3Hits: string[];
@@ -232,6 +234,140 @@ const CLINICAL_FORMALITY: Record<string, string> = {
 };
 
 // ============================================================
+// INDONESIAN LANGUAGE PATTERNS
+// ============================================================
+
+// Language detection — check if text is primarily Indonesian
+function detectLanguage(text: string): "en" | "id" | "mixed" {
+  const idWords = ["dan", "yang", "ini", "itu", "dengan", "untuk", "pada", "dari", "oleh", "dalam", "adalah", "akan", "tidak", "juga", "sudah", "masih", "bisa", "ada", "lebih", "sangat", "telah", "para", "antara", "karena", "namun", "sehingga", "serta", "bagi", "seperti", "setelah", "sebelum", "ketika", "meskipun", "bahwa"];
+  const words = text.toLowerCase().split(/\s+/);
+  const idCount = words.filter(w => idWords.includes(w.replace(/[^a-z]/g, ''))).length;
+  const ratio = idCount / words.length;
+  if (ratio > 0.15) return "id";
+  if (ratio > 0.05) return "mixed";
+  return "en";
+}
+
+// Indonesian T1 — Strongest AI Signals
+const ID_TIER_1_WORDS = [
+  // Formal/bureaucratic words that AI overuses
+  "optimalisasi", "sinergi", "kolaborasi", "implementasi", "transformasi",
+  "sustainable", "berkelanjutan", "holistik", "komprehensif", "inovatif",
+  "paradigma", "ekosistem", "strategis", "signifikan", "fundamental",
+  "esensial", "krusial", "vital", "ponten", "paramount",
+  // ChatGPT favorites in Indonesian
+  "mendalami", "menjelajahi", "menggali", "mengungkap", "mengupas",
+  "landskap", "lanskap", "tapestri", "labirin", "simfoni",
+  "pilar", "tiang", "punggung", "tulang punggung",
+  // Google Translate-sounding phrases
+  "dalam hal ini", "perlu dicatat", "penting untuk diketahui",
+  "tidak dapat dipungkiri", "sudah menjadi rahasia umum",
+];
+
+// Indonesian T2 — Moderate AI Signals
+const ID_TIER_2_WORDS = [
+  "dinamis", "vibrant", "beragam", "berimbang", "terpadu",
+  "terintegrasi", "berkesinambungan", "berdaya saing", "kompetitif",
+  "moderen", "mutakhir", "canggih", "revolusioner", "mutlak",
+  "absolut", "konkret", "riil", "praktis", "efektif", "efisien",
+  "profesional", "kompeten", "andal", "tangguh", "unggul",
+  "berkualitas", "terpercaya", "relevan", "aplikatif",
+];
+
+// Indonesian T3 — Transition/Formal words (cluster of 3+: flag)
+const ID_TIER_3_WORDS = [
+  "selain itu", "di sisi lain", "sebaliknya", "oleh karena itu",
+  "dengan demikian", "berdasarkan hal tersebut", "mengingat",
+  "sehubungan dengan", "terkait dengan", "berkaitan dengan",
+  "seiring dengan", "sejalan dengan", "menimbang", "merujuk pada",
+  "adapun", "alhasil", "kesimpulannya", "secara keseluruhan",
+];
+
+// Indonesian Banned Phrases — AI throat-clearing, rhetorical, performative
+const ID_BANNED_PHRASES = [
+  // Throat-clearing openers
+  "perlu diketahui", "penting untuk dicatat", "perlu diingat",
+  "tidak dapat dipungkiri", "sudah menjadi rahasia umum",
+  "faktanya", "pada kenyataannya", "sejatinya", "hakikatnya",
+  "pada dasarnya", "secara garis besar",
+  // ChatGPT-style openers
+  "di era digital", "di era modern", "di era globalisasi",
+  "di tengah-tengah", "di tengah perkembangan",
+  "dalam era transformasi", "dalam dunia yang serba cepat",
+  "seiring perkembangan teknologi", "seiring dengan kemajuan",
+  // Performative
+  "bayangkan", "coba bayangkan", "imagine",
+  "mar kita", "ayo kita", "yuk kita bahas",
+  // Rhetorical setups
+  "apa sebenarnya", "mengapa hal ini penting",
+  "bagaimana cara", "kenapa harus",
+  // Sycophantic (Indonesian ChatGPT)
+  "pertanyaan bagus", "hebat sekali", "luar biasa",
+  "tentu saja", "dengan senang hati", "semoga membantu",
+  "jangan ragu untuk", "silakan tanyakan",
+  // Closing cliches
+  "kesimpulannya", "secara keseluruhan", "pada akhirnya",
+  "intinya", "yang terpenting", "yang paling utama",
+  "dengan demikian dapat disimpulkan",
+  // Vague authority
+  "menurut para ahli", "berdasarkan penelitian",
+  "studi menunjukkan", "data menunjukkan",
+  "tidak diragukan lagi", "sudah terbukti",
+  // AI-generated conclusions
+  "tantangan dan peluang", "pro dan kontra",
+  "kelebihan dan kekurangan", "positif dan negatif",
+  "di satu sisi di sisi lain",
+];
+
+// Indonesian Structural Patterns
+const ID_STRUCTURAL_PATTERNS: { name: string; pattern: RegExp; severity: string }[] = [
+  // "Bukan X, melainkan Y" (Not X, but Y)
+  { name: "Bukan X, melainkan Y (negative parallelism)", pattern: /\bbukan\b.{5,60}\bmelainkan\b/gi, severity: "high" },
+  // "Tidak hanya X, tetapi juga Y"
+  { name: "Tidak hanya X, tetapi juga Y", pattern: /\btidak hanya\b.{5,60}\btetapi juga\b/gi, severity: "high" },
+  // "Di satu sisi... di sisi lain"
+  { name: "Di satu sisi... di sisi lain (both-sides)", pattern: /\bdi satu sisi\b.{10,80}\bdi sisi lain\b/gi, severity: "medium" },
+  // Tricolon in Indonesian (X, Y, dan Z)
+  { name: "Tricolon Indonesia (X, Y, dan Z)", pattern: /\b\w+,\s*\w+,\s*dan\s*\w+\b/g, severity: "medium" },
+  // "Perlu dicatat bahwa" (It's worth noting that)
+  { name: "Perlu dicatat bahwa", pattern: /\bperlu dicatat\b/gi, severity: "high" },
+  // "Tidak dapat dipungkiri bahwa" (It cannot be denied)
+  { name: "Tidak dapat dipungkiri bahwa", pattern: /\btidak dapat dipungkiri\b/gi, severity: "high" },
+  // "Seiring dengan perkembangan" (Along with the development)
+  { name: "Seiring dengan perkembangan", pattern: /\bseiring (dengan )?perkembangan\b/gi, severity: "high" },
+  // "Dalam era digital/modern"
+  { name: "Dalam era digital/modern", pattern: /\bdalam era\b/gi, severity: "high" },
+  // "X memainkan peran penting" (X plays an important role)
+  { name: "Memainkan peran penting", pattern: /\bmemainkan peran (penting|crucial|vital)\b/gi, severity: "high" },
+  // ChatGPT-style definition opener: "X adalah..."
+  { name: "Definition opener (X adalah...)", pattern: /^[A-Z][a-z]+ adalah\b/gm, severity: "medium" },
+  // "Berikut adalah" (Here are)
+  { name: "Berikut adalah", pattern: /\bberikut adalah\b/gi, severity: "medium" },
+  // "Adapun" as paragraph opener
+  { name: "Adapun sebagai pembuka", pattern: /\badapun\b/gi, severity: "low" },
+];
+
+// Indonesian Clinical Formality
+const ID_CLINICAL_FORMALITY: Record<string, string> = {
+  "optimalisasi": "perbaikan",
+  "implementasi": "penerapan",
+  "transformasi": "perubahan",
+  "sinergi": "kerja sama",
+  "kolaborasi": "kerja sama",
+  "komprehensif": "lengkap",
+  "signifikan": "besar",
+  "fundamental": "dasar",
+  "esensial": "penting",
+  "berkelanjutan": "terus-menerus",
+  "ekosistem": "lingkungan",
+  "paradigma": "cara pandang",
+  "strategis": "penting",
+  "mengimplementasikan": "menerapkan",
+  "mengoptimalkan": "memperbaiki",
+  "berkolaborasi": "bekerja sama",
+};
+
+// ============================================================
 // HELPER FUNCTIONS
 // ============================================================
 
@@ -279,36 +415,52 @@ function getBurstiness(text: string): number {
 function analyzeVocabulary(text: string): ScoreResult {
   const issues: string[] = [];
   let score = 10;
+  const lang = detectLanguage(text);
 
+  // English patterns
   const t1Hits = findWordHits(text, TIER_1_WORDS);
   const t2Hits = findWordHits(text, TIER_2_WORDS);
   const t3Hits = findWordHits(text, TIER_3_WORDS);
 
-  if (t1Hits.length > 0) {
-    const penalty = Math.min(6, t1Hits.length * 1.5);
+  // Indonesian patterns
+  const idT1Hits = findWordHits(text, ID_TIER_1_WORDS);
+  const idT2Hits = findWordHits(text, ID_TIER_2_WORDS);
+  const idT3Hits = findWordHits(text, ID_TIER_3_WORDS);
+
+  const allT1 = [...t1Hits, ...idT1Hits];
+  const allT2 = [...t2Hits, ...idT2Hits];
+  const allT3 = [...t3Hits, ...idT3Hits];
+
+  if (allT1.length > 0) {
+    const penalty = Math.min(6, allT1.length * 1.5);
     score -= penalty;
-    issues.push(`T1 AI words (${t1Hits.length}): ${t1Hits.slice(0, 5).join(", ")}${t1Hits.length > 5 ? "..." : ""}`);
+    issues.push(`T1 AI words (${allT1.length}): ${allT1.slice(0, 5).join(", ")}${allT1.length > 5 ? "..." : ""}`);
   }
-  if (t2Hits.length > 0) {
-    const penalty = Math.min(4, t2Hits.length);
+  if (allT2.length > 0) {
+    const penalty = Math.min(4, allT2.length);
     score -= penalty;
-    issues.push(`T2 AI words (${t2Hits.length}): ${t2Hits.slice(0, 5).join(", ")}${t2Hits.length > 5 ? "..." : ""}`);
+    issues.push(`T2 AI words (${allT2.length}): ${allT2.slice(0, 5).join(", ")}${allT2.length > 5 ? "..." : ""}`);
   }
-  if (t3Hits.length >= 3) {
+  if (allT3.length >= 3) {
     score -= 2;
-    issues.push(`T3 transition cluster (${t3Hits.length}): ${t3Hits.join(", ")}`);
+    issues.push(`T3 transition cluster (${allT3.length}): ${allT3.join(", ")}`);
   }
 
-  // Clinical formality check
+  // Clinical formality check (both languages)
   const clinicalHits: string[] = [];
   const lower = text.toLowerCase();
-  for (const phrase of Object.keys(CLINICAL_FORMALITY)) {
-    if (lower.includes(phrase)) clinicalHits.push(`${phrase} → ${CLINICAL_FORMALITY[phrase]}`);
+  const allFormality = { ...CLINICAL_FORMALITY, ...ID_CLINICAL_FORMALITY };
+  for (const phrase of Object.keys(allFormality)) {
+    if (lower.includes(phrase)) clinicalHits.push(`${phrase} → ${allFormality[phrase]}`);
   }
   if (clinicalHits.length > 0) {
     score -= Math.min(2, clinicalHits.length);
     issues.push(`Formal words: ${clinicalHits.slice(0, 3).join("; ")}`);
   }
+
+  // Language indicator
+  if (lang === "id") issues.unshift("🇮🇩 Indonesian detected");
+  else if (lang === "mixed") issues.unshift("🇮🇩🇬🇧 Mixed language detected");
 
   return { dimension: "Vocabulary", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
 }
@@ -318,9 +470,12 @@ function analyzeBannedPhrases(text: string): ScoreResult {
   let score = 10;
 
   const hits = findWordHits(text, BANNED_PHRASES);
-  if (hits.length > 0) {
-    score -= Math.min(8, hits.length * 2);
-    issues.push(`Banned phrases (${hits.length}): ${hits.slice(0, 5).map(h => `"${h}"`).join(", ")}${hits.length > 5 ? "..." : ""}`);
+  const idHits = findWordHits(text, ID_BANNED_PHRASES);
+  const allHits = [...hits, ...idHits];
+
+  if (allHits.length > 0) {
+    score -= Math.min(8, allHits.length * 2);
+    issues.push(`Banned phrases (${allHits.length}): ${allHits.slice(0, 5).map(h => `"${h}"`).join(", ")}${allHits.length > 5 ? "..." : ""}`);
   }
 
   return { dimension: "Banned Phrases", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
@@ -330,6 +485,7 @@ function analyzeStructuralTells(text: string): ScoreResult {
   const issues: string[] = [];
   let score = 10;
 
+  // English structural patterns
   for (const { name, pattern, severity } of STRUCTURAL_PATTERNS) {
     const count = countMatches(text, pattern);
     if (count > 0) {
@@ -339,8 +495,18 @@ function analyzeStructuralTells(text: string): ScoreResult {
     }
   }
 
-  // Tricolon check — 3+ consecutive adjectives
-  const tricolonCount = countMatches(text, /\b\w+,\s*\w+,\s*and\s*\w+\b/g);
+  // Indonesian structural patterns
+  for (const { name, pattern, severity } of ID_STRUCTURAL_PATTERNS) {
+    const count = countMatches(text, pattern);
+    if (count > 0) {
+      const penalty = severity === "high" ? Math.min(3, count * 1.5) : severity === "medium" ? Math.min(2, count) : Math.min(1, count);
+      score -= penalty;
+      issues.push(`${name} (${count}x)`);
+    }
+  }
+
+  // Tricolon check (both languages)
+  const tricolonCount = countMatches(text, /\b\w+,\s*\w+,\s*(and|dan)\s*\w+\b/g);
   if (tricolonCount > 2) {
     score -= 2;
     issues.push(`Excessive tricolons (${tricolonCount}x)`);
@@ -572,13 +738,15 @@ export function analyzeText(text: string): AnalysisResult {
         { dimension: "Density", score: 0, maxScore: 10, severity: "low", issues: [] },
         { dimension: "Formatting", score: 0, maxScore: 10, severity: "low", issues: [] },
       ],
-      total: 0, maxTotal: 70,
+      total: 0, maxTotal: 70, language: "en",
       tier1Hits: [], tier2Hits: [], tier3Hits: [],
       structuralTells: [], formattingTells: [],
       modelFingerprints: [], passiveVoice: [],
       suggestions: [], density: 0,
     };
   }
+
+  const language = detectLanguage(text);
 
   const scores = [
     analyzeVocabulary(text),
@@ -593,14 +761,18 @@ export function analyzeText(text: string): AnalysisResult {
   const total = scores.reduce((acc, s) => acc + s.score, 0);
   const maxTotal = scores.reduce((acc, s) => acc + s.maxScore, 0);
 
-  // Collect tier hits
-  const tier1Hits = findWordHits(text, TIER_1_WORDS);
-  const tier2Hits = findWordHits(text, TIER_2_WORDS);
-  const tier3Hits = findWordHits(text, TIER_3_WORDS);
+  // Collect tier hits (both languages)
+  const tier1Hits = [...findWordHits(text, TIER_1_WORDS), ...findWordHits(text, ID_TIER_1_WORDS)];
+  const tier2Hits = [...findWordHits(text, TIER_2_WORDS), ...findWordHits(text, ID_TIER_2_WORDS)];
+  const tier3Hits = [...findWordHits(text, TIER_3_WORDS), ...findWordHits(text, ID_TIER_3_WORDS)];
 
-  // Structural tells
+  // Structural tells (both languages)
   const structuralTells: string[] = [];
   for (const { name, pattern } of STRUCTURAL_PATTERNS) {
+    const count = countMatches(text, pattern);
+    if (count > 0) structuralTells.push(`${name} (${count}x)`);
+  }
+  for (const { name, pattern } of ID_STRUCTURAL_PATTERNS) {
     const count = countMatches(text, pattern);
     if (count > 0) structuralTells.push(`${name} (${count}x)`);
   }
@@ -649,7 +821,7 @@ export function analyzeText(text: string): AnalysisResult {
   if (suggestions.length === 0) suggestions.push("Text looks clean. Good work.");
 
   return {
-    scores, total, maxTotal,
+    scores, total, maxTotal, language,
     tier1Hits, tier2Hits, tier3Hits,
     structuralTells, formattingTells,
     modelFingerprints, passiveVoice,
