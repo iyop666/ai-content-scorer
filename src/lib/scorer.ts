@@ -317,6 +317,33 @@ const ID_BANNED_PHRASES = [
   "tantangan dan peluang", "pro dan kontra",
   "kelebihan dan kekurangan", "positif dan negatif",
   "di satu sisi di sisi lain",
+  // Meta AI / WhatsApp AI patterns (casual Indonesian)
+  "oke, jadi", "jadi gini", "jadi begini", "nih, jadi",
+  "jangan lupa ya", "pastikan ya", "ingat ya",
+  "semoga membantu ya", "semoga bermanfaat ya",
+  "selamat mencoba ya", "selamat mencoba!",
+  "gitu aja sih", "segitu aja", "cukup sekian",
+  "mudah-mudahan", "insyaallah",
+  // Meta AI over-helpfulness
+  "berikut adalah langkah-langkah", "berikut tahapannya",
+  "ini dia caranya", "begini cara membuatnya",
+  "simak baik-baik", "perhatikan hal berikut",
+  "ada beberapa hal yang perlu diperhatikan",
+  "berikut beberapa tips", "berikut beberapa manfaat",
+  "perlu diingat bahwa", "harus diingat bahwa",
+  // Meta AI structure patterns
+  "langkah 1:", "langkah 2:", "langkah 3:",
+  "tahap 1:", "tahap 2:", "tahap 3:",
+  "pertama-tama", "selanjutnya", "terakhir",
+  // Meta AI casual fillers that signal AI
+  "sebenarnya sih", "memang sih", "iya sih",
+  "bener banget", "betul sekali", "tepat sekali",
+  "wah, bagus banget", "keren banget",
+  // Meta AI recipe/tutorial patterns
+  "pastikan untuk", "jangan lupa untuk", "usahakan",
+  "sebaiknya", "alangkah baiknya", "akan lebih baik jika",
+  "prosesnya cukup mudah", "caranya sangat mudah",
+  "tidak sulit kok", "gampang banget kok",
 ];
 
 // Indonesian Structural Patterns
@@ -345,6 +372,11 @@ const ID_STRUCTURAL_PATTERNS: { name: string; pattern: RegExp; severity: string 
   { name: "Berikut adalah", pattern: /\bberikut adalah\b/gi, severity: "medium" },
   // "Adapun" as paragraph opener
   { name: "Adapun sebagai pembuka", pattern: /\badapun\b/gi, severity: "low" },
+  // Meta AI "too perfect" structure
+  { name: "Numbered steps (langkah 1, 2, 3)", pattern: /\b(langkah|tahap|step)\s*\d+/gi, severity: "high" },
+  { name: "Over-organized bullets", pattern: /^[\-\*]\s+.{10,60}$/gm, severity: "low" },
+  { name: "Perfect recipe format", pattern: /\b(bahan|bumbu|cara membuat|cara memasak)\b/gi, severity: "medium" },
+  { name: "Meta AI helpful closer", pattern: /\b(selamat mencoba|semoga membantu|semoga bermanfaat)\b/gi, severity: "high" },
 ];
 
 // Indonesian Clinical Formality
@@ -622,6 +654,39 @@ function analyzeVoice(text: string): ScoreResult {
     if (Math.sqrt(paraVariance) < 10) {
       score -= 1;
       issues.push("Uniform paragraph lengths");
+    }
+  }
+
+  // Perfection detector (Meta AI / Gemini casual Indonesian)
+  // Check for zero contractions + zero slang in Indonesian text
+  const lang = detectLanguage(text);
+  if (lang === "id" || lang === "mixed") {
+    const contractions = /\b(nggak|gak|ga|gk|dong|sih|nih|deh|lah|kok|banget|bgt|doang|aja|aja sih|btw|gw|lu|loe|gue|guys)\b/i;
+    const hasContractions = contractions.test(text);
+    
+    // Indonesian AI writes with perfect "tidak" instead of casual "nggak/gak"
+    const formalNegation = (text.match(/\btidak\b/gi) || []).length;
+    const casualNegation = (text.match(/\b(nggak|gak|ga|gk)\b/gi) || []).length;
+    
+    if (formalNegation > 3 && casualNegation === 0) {
+      score -= 2;
+      issues.push("Too formal: uses 'tidak' exclusively, no casual 'nggak/gak'");
+    }
+    
+    // Check for overly detailed explanations (every sentence explains something)
+    const explanatoryPhrases = text.match(/\b(karena|sebab|hal ini|yang mana|dimana|yaitu|adalah|merupakan)\b/gi) || [];
+    const wordCount = text.split(/\s+/).length;
+    const explanatoryRatio = explanatoryPhrases.length / (wordCount / 100);
+    if (explanatoryRatio > 5) {
+      score -= 2;
+      issues.push(`Over-explaining (${explanatoryPhrases.length} explanatory phrases)`);
+    }
+    
+    // Check for zero typos/informalities (too perfect)
+    const informalMarkers = /\b(emang|gini|gitu|kayak|kaya|udah|udh|blm|blom|skrg|skarang|tp|tpi|dg|dgn|sm|smw|org|org2)\b/i;
+    if (!informalMarkers.test(text) && wordCount > 50 && !hasContractions) {
+      score -= 2;
+      issues.push("Zero informal markers: text is suspiciously perfect for casual Indonesian");
     }
   }
 
