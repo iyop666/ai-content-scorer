@@ -16,20 +16,18 @@
     16|- [humanize-writing-skill](https://github.com/lguz/humanize-writing-skill) — 51 banned words, 10 structural patterns
     17|- [slop-cop](https://github.com/MahmoudHalat/slop-cop) — 45 rhetorical patterns, ~150 vocabulary tells, dual-axis scoring
     18|
-    19|## Scoring Dimensions (10 x 10 = 100)
-    20|
-    21|| Dimension | What it checks |
-    22||-----------|---------------|
-    23|| **Vocabulary** | 50+ T1 AI words, 35+ T2 words, T3 transition clusters, clinical formality (EN + ID) |
-    24|| **Banned Phrases** | 80+ EN + 60+ ID throat-clearing openers, sycophantic phrases, rhetorical setups |
-    25|| **Structure** | 15 EN + 16 ID structural patterns: negative parallelism, tricolons, fabricated case studies |
-    26|| **Rhythm** | Sentence uniformity, burstiness, em-dash overuse, staccato fragments, adverb overuse |
-    27|| **Voice** | Sycophancy, hedge stacking, performative openers, both-sides-ism, uniform paragraphs |
-    28|| **Density** | Sentence length, passive voice %, filler words, buzzword stacking, redundant phrases |
-    29|| **Formatting** | Bold bullets, emoji headers, listicles, formulaic structures, colon-pattern titles |
-    30|| **Readability** | Wall-of-text paragraphs, avg sentence length, passive ratio, subheadings, single-sentence paras |
-    31|| **Originality** | Cliche metaphors, template patterns, overused words, generic conclusions |
-    32|| **Specificity** | Concrete numbers vs vague quantifiers, anecdotes vs generic examples, abstract nouns |
+    ## Scoring Dimensions (10 x 10 = 100)
+
+    - **Vocabulary** — 50+ T1 AI words, 35+ T2 words, T3 transition clusters, clinical formality (EN + ID)
+    - **Banned Phrases** — 80+ EN + 60+ ID throat-clearing openers, sycophantic phrases, rhetorical setups
+    - **Structure** — 15 EN + 16 ID structural patterns: negative parallelism, tricolons, fabricated case studies
+    - **Rhythm** — Sentence uniformity, burstiness, em-dash overuse, staccato fragments, adverb overuse
+    - **Voice** — Sycophancy, hedge stacking, performative openers, both-sides-ism, uniform paragraphs
+    - **Density** — Sentence length, passive voice %, filler words, buzzword stacking, redundant phrases
+    - **Formatting** — Bold bullets, emoji headers, listicles, formulaic structures, colon-pattern titles
+    - **Readability** — Wall-of-text paragraphs, avg sentence length, passive ratio, subheadings
+    - **Originality** — Cliche metaphors, template patterns, overused words, generic conclusions
+    - **Specificity** — Concrete numbers vs vague quantifiers, anecdotes vs generic examples, abstract nouns
     33|
     34|Each dimension scores 1-10. Total score: 100.
     35|
