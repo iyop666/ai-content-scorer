@@ -29,7 +29,12 @@ function ScoreGauge({ score, max, label }: { score: number; max: number; label: 
         <span className="text-sm font-medium">{label}</span>
         <span className="text-sm font-bold">{score}/{max}</span>
       </div>
-      <Progress value={percentage} className={`h-2 ${color}`} />
+      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
     </div>
   );
 }

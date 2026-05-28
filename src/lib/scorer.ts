@@ -73,10 +73,10 @@ const BINARY_CONTRASTS = [
   /stops being .+ and starts being/gi,
 ];
 
-// Passive voice patterns
+// Passive voice patterns (no 'g' flag — tested per-sentence via .test())
 const PASSIVE_PATTERNS = [
-  /\b(is|are|was|were|be|been|being)\s+\w+ed\b/gi,
-  /\b(is|are|was|were|be|been|being)\s+\w+en\b/gi,
+  /\b(is|are|was|were|be|been|being)\s+\w+ed\b/i,
+  /\b(is|are|was|were|be|been|being)\s+\w+en\b/i,
 ];
 
 // Wh- sentence starters
@@ -114,6 +114,9 @@ function analyzeDirectness(text: string): ScoreResult {
 
   // Check for passive voice
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  if (sentences.length === 0) {
+    return { dimension: "Directness", score: Math.max(1, score), issues };
+  }
   const passiveCount = sentences.filter(s => 
     PASSIVE_PATTERNS.some(p => p.test(s))
   ).length;
@@ -149,6 +152,11 @@ function analyzeRhythm(text: string): ScoreResult {
 
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
   
+  // Guard: no sentences detected
+  if (sentences.length === 0) {
+    return { dimension: "Rhythm", score: 5, issues: ["No sentence-ending punctuation detected"] };
+  }
+
   // Check sentence length variation
   const lengths = sentences.map(s => s.trim().split(/\s+/).length);
   const avgLen = lengths.reduce((a, b) => a + b, 0) / lengths.length;
@@ -185,13 +193,17 @@ function analyzeRhythm(text: string): ScoreResult {
     issues.push(`${fragments} dramatic fragments`);
   }
 
-  // Check for adverb overuse
+  // Check for adverb overuse (curated list + -ly pattern)
   const adverbs = text.toLowerCase().split(/\s+/).filter(w => 
     COMMON_ADVERBS.includes(w.replace(/[^a-z]/g, ''))
   );
-  if (adverbs.length > 3) {
+  const lyAdverbs = text.match(ADVERB_PATTERN) || [];
+  const uniqueLyAdverbs = Array.from(new Set(lyAdverbs.map(a => a.toLowerCase())))
+    .filter(a => !COMMON_ADVERBS.includes(a));
+  const totalAdverbs = adverbs.length + uniqueLyAdverbs.length;
+  if (totalAdverbs > 3) {
     score -= 1;
-    issues.push(`${adverbs.length} common adverbs`);
+    issues.push(`${totalAdverbs} adverbs (${adverbs.length} common, ${uniqueLyAdverbs.length} -ly)`);
   }
 
   return { dimension: "Rhythm", score: Math.max(1, score), issues };
@@ -321,7 +333,7 @@ function analyzeDensity(text: string): ScoreResult {
 
   const words = text.split(/\s+/).length;
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
-  const avgWordsPerSentence = words / sentences;
+  const avgWordsPerSentence = sentences === 0 ? 0 : words / sentences;
 
   // Check for overly long sentences
   if (avgWordsPerSentence > 25) {
