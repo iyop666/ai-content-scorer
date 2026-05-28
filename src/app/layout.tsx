@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Content Scorer",
-  description: "Score your text on 5 dimensions. Detect AI patterns, banned phrases, and passive voice.",
+  title: "SlopEdge",
+  description: "Your competitors use AI too. Make sure yours doesn't sound like it. Score your text on 10 dimensions, detect AI patterns, fix them before you publish.",
 };
 
 export default function RootLayout({

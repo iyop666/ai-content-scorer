@@ -84,7 +84,7 @@ export default function Home() {
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">AI Content Scorer</h1>
+          <h1 className="text-3xl font-bold">SlopEdge</h1>
           <p className="text-muted-foreground">
             Your competitors use AI too.
           </p>

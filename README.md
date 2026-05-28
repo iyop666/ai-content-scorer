@@ -1,10 +1,12 @@
-# AI Content Scorer
+# SlopEdge
 
-Paste your text. Get scored on 10 dimensions. Fix AI patterns.
+Your competitors use AI too. Make sure yours doesn't sound like it.
+
+Paste your text. Get scored on 10 dimensions. Fix AI patterns before you publish.
 
 ## What is this?
 
-AI Content Scorer analyzes your writing and detects common AI-generated patterns, structural cliches, and weak prose. It scores your text on 10 dimensions and can identify which AI model likely generated the text (GPT, Claude, Gemini).
+SlopEdge analyzes your writing and detects common AI-generated patterns, structural cliches, and weak prose. It scores your text on 10 dimensions and can identify which AI model likely generated the text (GPT, Claude, Gemini).
 
 Works with English and Indonesian text. Auto-detects language.
 
