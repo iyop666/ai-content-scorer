@@ -1,56 +1,195 @@
-// AI Content Scorer — based on stop-slop rules
-// Scores text on 5 dimensions: Directness, Rhythm, Trust, Authenticity, Density
+// AI Content Scorer — v2
+// Merged from: stop-slop, claude-slop-detector, humanize-writing-skill, slop-cop
+// Scores text on 7 dimensions with tiered severity
 
 export type ScoreResult = {
   dimension: string;
   score: number;
+  maxScore: number;
+  severity: "low" | "medium" | "high" | "critical";
   issues: string[];
 };
 
 export type AnalysisResult = {
   scores: ScoreResult[];
   total: number;
-  bannedPhrases: string[];
-  adverbs: string[];
+  maxTotal: number;
+  tier1Hits: string[];
+  tier2Hits: string[];
+  tier3Hits: string[];
+  structuralTells: string[];
+  formattingTells: string[];
+  modelFingerprints: { model: string; matches: string[] }[];
   passiveVoice: string[];
-  structuralIssues: string[];
   suggestions: string[];
+  density: number;
 };
 
-// Banned phrases (throat-clearing openers, emphasis crutches, business jargon)
-const BANNED_PHRASES = [
-  "here's the thing",
-  "here's what",
-  "here's this",
-  "here's that",
-  "here's why",
-  "the uncomfortable truth is",
-  "it turns out",
-  "the real",
-  "let me be clear",
-  "the truth is",
-  "i'll say it again",
-  "i'm going to be honest",
-  "can we talk about",
-  "here's what i find interesting",
-  "here's the problem though",
-  "full stop",
-  "let that sink in",
-  "this matters because",
-  "make no mistake",
-  "here's why that matters",
-  "at its core",
-  "in today's",
-  "it's worth noting",
-  "at the end of the day",
-  "what if i told you",
-  "think about it",
-  "and that's okay",
-  "here's what i mean",
+// ============================================================
+// TIER 1 — Strongest AI Signals (each: -3 points)
+// ============================================================
+const TIER_1_WORDS = [
+  // From humanize-writing-skill
+  "delve", "tapestry", "landscape", "pivotal", "underscore", "testament",
+  "intricate", "intricacies", "meticulous", "meticulously", "nuanced",
+  "multifaceted", "embark", "spearhead", "bolster", "bolstered", "garner",
+  "interplay", "realm", "labyrinth", "symphony",
+  // From slop-cop
+  "leverage", "harness", "foster", "empower", "unlock", "elevate",
+  "streamline", "revolutionize", "illuminate", "navigate", "utilize",
+  "facilitate", "optimize", "enhance", "showcase", "boast",
+  "groundbreaking", "cutting-edge", "state-of-the-art", "game-changer",
+  "game-changing", "ever-evolving", "ever-changing", "transformative",
+  "unwavering", "robust", "seamless", "seamlessly",
+  // From claude-slop-detector
+  "revolutionary",
 ];
 
-// Common adverbs
-const ADVERB_PATTERN = /\b\w+ly\b/gi;
+// ============================================================
+// TIER 2 — Moderate AI Signals (each: -2 points)
+// ============================================================
+const TIER_2_WORDS = [
+  // From humanize-writing-skill
+  "crucial", "vibrant", "resonate", "enduring", "holistic",
+  "comprehensive", "innovative", "dynamic",
+  // From slop-cop
+  "demystify", "ignite", "supercharge", "unleash", "unveil", "reimagine",
+  "reverberate", "transcend", "roadmap", "cornerstone", "crucible",
+  "profound", "compelling", "commendable", "insightful", "invaluable",
+  "next-generation", "future-proof", "daunting", "ever-expanding",
+  "timeless", "diverse array", "unique blend", "hyper-connected",
+  "vivid", "bustling", "mission-critical", "enterprise-grade",
+  "world-class", "best-in-class", "ai-native", "agent-driven",
+  "high-velocity", "outcome-oriented", "scalable", "repeatable", "defensible",
+  // From claude-slop-detector
+  "comprehensive and thorough", "unique and intense",
+  "simple and straightforward", "complex and nuanced",
+];
+
+// ============================================================
+// TIER 3 — Transition/Formal words (cluster of 3+: -2 points)
+// ============================================================
+const TIER_3_WORDS = [
+  "furthermore", "moreover", "additionally", "consequently",
+  "nevertheless", "subsequently", "notably", "indeed", "nonetheless",
+  "hence", "thus", "overall", "ultimately",
+];
+
+// ============================================================
+// BANNED PHRASES — Throat-clearing, rhetorical, sycophantic
+// ============================================================
+const BANNED_PHRASES = [
+  // stop-slop originals
+  "here's the thing", "here's what", "here's this", "here's that",
+  "here's why", "the uncomfortable truth is", "it turns out",
+  "let me be clear", "the truth is", "i'll say it again",
+  "i'm going to be honest", "can we talk about",
+  "here's what i find interesting", "here's the problem though",
+  "full stop", "let that sink in", "this matters because",
+  "make no mistake", "here's why that matters", "at its core",
+  "in today's", "it's worth noting", "at the end of the day",
+  "what if i told you", "think about it", "and that's okay",
+  "here's what i mean",
+  // claude-slop-detector additions
+  "the answer surprised me", "here's what blew my mind", "plot twist:",
+  "the crazy part?", "that's when it clicked", "the bottom line",
+  "let's be clear", "let's dive in", "let's unpack this",
+  "let's break this down", "without further ado",
+  "in this post, we'll cover", "by the end of this article, you'll",
+  // slop-cop additions
+  "in today's fast-paced", "in today's digital world",
+  "in today's fast-paced world", "at the end of the day",
+  "in essence", "to put it simply", "first and foremost",
+  "last but not least", "all things considered", "in a nutshell",
+  "that being said", "with that in mind",
+  "studies show", "research suggests", "research indicates",
+  "many experts agree", "industry reports indicate",
+  "it is widely understood", "it's widely believed",
+  "observers have noted", "some critics argue",
+  "i hope this helps", "let me know if you have any questions",
+  "feel free to reach out", "don't hesitate to ask",
+  "happy to clarify",
+  "imagine a world", "as a society", "we live in an age",
+  "play a significant role", "aims to explore",
+  "great question!", "excellent question!", "excellent point!",
+  "absolutely!", "certainly!", "of course!",
+];
+
+// ============================================================
+// MODEL FINGERPRINTS
+// ============================================================
+const MODEL_FINGERPRINTS: Record<string, RegExp[]> = {
+  "GPT/Claude": [
+    /\bdelve[sd]?\b/gi, /\bunderscore[sd]?\b/gi, /\bcommendable\b/gi,
+    /\bintricate\b/gi, /\bmeticulous(ly)?\b/gi, /\bpivotal\b/gi,
+    /\bgroundbreaking\b/gi, /\bgarner(ed|s)?\b/gi, /\bboast(s|ed)?\b/gi,
+    /\balign(s|ed)?\b/gi, /\bsurpassing\b/gi, /\bplay a significant role\b/gi,
+    /\btoday's fast-paced world\b/gi, /\baims to explore\b/gi,
+  ],
+  "Claude-specific": [
+    /\bmeaningfully\b/gi, /\bthe distinction is worth examining\b/gi,
+    /\bI notice that\b/gi, /\bit's worth examining\b/gi,
+    /\bI should be careful here\b/gi, /\bworth noting that\b/gi,
+  ],
+  "Gemini-specific": [
+    /\bthe way for\b/gi, /\bthe cascade of\b/gi,
+    /\bin the world of\b/gi, /\blet's explore\b/gi,
+    /\blet's take a closer look\b/gi,
+  ],
+};
+
+// ============================================================
+// STRUCTURAL PATTERNS
+// ============================================================
+const STRUCTURAL_PATTERNS: { name: string; pattern: RegExp; severity: string }[] = [
+  // Negative parallelism
+  { name: "Negative parallelism (Not X, but Y)", pattern: /\bnot\b.{5,60}\bbut\b/gi, severity: "high" },
+  // Dramatic countdown
+  { name: "Dramatic countdown (Not X. Not Y. Just Z)", pattern: /\bnot\b[^.]+\. Not\b[^.]+\./gi, severity: "high" },
+  // Rhetorical Q+A
+  { name: "Rhetorical Q+A setup", pattern: /\b(the (result|answer|truth|reality|problem|key))\?\s*[A-Z]/gm, severity: "high" },
+  // Tricolon abuse
+  { name: "Tricolon (rule of three)", pattern: /\b\w+,\s*\w+,\s*and\s*\w+\b/g, severity: "medium" },
+  // Comparator sentences
+  { name: "Comparator (This isn't X. It's Y)", pattern: /\bthis isn't\b.{3,40}\.\s*it's\b/gi, severity: "high" },
+  // Staccato fragment spam
+  { name: "Staccato fragments", pattern: /\b\w+\.\s*\b\w+\.\s*\b\w+\./g, severity: "high" },
+  // Flattery sandwich
+  { name: "Flattery sandwich", pattern: /\b(while|though)\b.{10,60}\b(have merit|suggests|conventional)\b/gi, severity: "medium" },
+  // Fabricated case study
+  { name: "Fabricated case study", pattern: /\b(take|meet|consider)\s+\b[A-Z][a-z]+\b,\s+a\b/g, severity: "high" },
+  // Vague authority
+  { name: "Vague authority (no citation)", pattern: /\b(studies show|research suggests|experts agree|data tells us)\b/gi, severity: "high" },
+  // Hedged superlatives
+  { name: "Hedged superlative", pattern: /\b(perhaps|arguably|possibly)\s+(the\s+)?(most|best|greatest|worst)\b/gi, severity: "medium" },
+  // While X, Y opener
+  { name: "While X, Y opener", pattern: /^while\b.{10,60},/gim, severity: "medium" },
+  // Both-sides-ism
+  { name: "Both-sides-ism", pattern: /\bon (the )?one hand\b.{10,80}\bon the other\b/gi, severity: "medium" },
+  // False concession
+  { name: "False concession", pattern: /\bdespite (its|the|their) .{5,30},\s*(the )?(future|potential|promise|impact)\b/gi, severity: "medium" },
+  // Mirror structure (A/B parallelism)
+  { name: "Mirror structure", pattern: /\b(\w+ \w+ \w+)\.\s*\1\b/gi, severity: "medium" },
+  // Overuse of colons for reveals
+  { name: "Colon reveal pattern", pattern: /[^:]{20,80}:\s*a\b/g, severity: "low" },
+];
+
+// ============================================================
+// FORMATTING TELLS
+// ============================================================
+const FORMATTING_TELLS: { name: string; check: (text: string) => boolean; severity: string }[] = [
+  { name: "Bold-first bullets", check: (t) => /^\*\*\w/gm.test(t), severity: "high" },
+  { name: "Emoji headers/bullets", check: (t) => /[\u{1F3AF}\u{1F4A1}\u{1F680}\u{2705}\u{1F525}\u{1F4CC}\u{1F3C6}]/u.test(t), severity: "medium" },
+  { name: "Colon-pattern title", check: (t) => /^#\s+\w[^:]+:\s+(A |The |How |Why |What )/m.test(t), severity: "medium" },
+  { name: "Ultimate/Definitive guide", check: (t) => /\b(ultimate|definitive)\s+guide\b/gi.test(t), severity: "high" },
+  { name: "TL;DR / Key Takeaways", check: (t) => /\b(TL;?DR|key takeaways?)\b/i.test(t), severity: "medium" },
+  { name: "In conclusion section", check: (t) => /^#{1,3}\s*(in conclusion|to (summarize|wrap up|conclude))/gim.test(t), severity: "high" },
+  { name: "Numbered listicle (5/7/10 ways)", check: (t) => /\b(5|7|10|15|20)\s+(ways|tips|reasons|steps|things)\b/i.test(t), severity: "low" },
+];
+
+// ============================================================
+// COMMON ADVERBS
+// ============================================================
 const COMMON_ADVERBS = [
   "really", "just", "literally", "genuinely", "honestly", "simply",
   "actually", "deeply", "truly", "fundamentally", "inherently",
@@ -58,92 +197,156 @@ const COMMON_ADVERBS = [
   "essentially", "basically", "practically", "virtually", "clearly",
   "obviously", "certainly", "definitely", "probably", "possibly",
   "arguably", "surprisingly", "notably", "significantly", "remarkably",
+  "quietly", "subtly",
 ];
 
-// Binary contrast patterns
-const BINARY_CONTRASTS = [
-  /not because .+ because/gi,
-  /not .+\. but .+\./gi,
-  /isn't .+\. .+ is\./gi,
-  /the answer isn't .+ it's/gi,
-  /it feels like .+ it's actually/gi,
-  /the question isn't .+ it's/gi,
-  /not just .+ but also/gi,
-  /doesn't mean .+ but actually/gi,
-  /stops being .+ and starts being/gi,
-];
+const ADVERB_PATTERN = /\b\w+ly\b/gi;
 
-// Passive voice patterns (no 'g' flag — tested per-sentence via .test())
+// ============================================================
+// PASSIVE VOICE
+// ============================================================
 const PASSIVE_PATTERNS = [
   /\b(is|are|was|were|be|been|being)\s+\w+ed\b/i,
   /\b(is|are|was|were|be|been|being)\s+\w+en\b/i,
 ];
 
-// Wh- sentence starters
-const WH_STARTERS = /^(what|why|when|where|who|how|which)\b/i;
+// ============================================================
+// CLINICAL FORMALITY (word → better replacement)
+// ============================================================
+const CLINICAL_FORMALITY: Record<string, string> = {
+  "individuals": "people",
+  "utilize": "use",
+  "facilitate": "help",
+  "implement": "do/start",
+  "commence": "start",
+  "terminate": "end",
+  "subsequent": "next",
+  "prior to": "before",
+  "in the event that": "if",
+  "due to the fact that": "because",
+  "at this point in time": "now",
+  "in order to": "to",
+  "for the purpose of": "for",
+  "in the process of": "while",
+  "at this juncture": "now",
+};
 
-// Dramatic fragmentation
-const FRAGMENTATION = [
-  /\w+\.\s*That's it\./gi,
-  /\w+\.\s*That's the \w+\./gi,
-];
-
-// Em dash
-const EM_DASH = /—/g;
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
 
 function countMatches(text: string, pattern: RegExp): number {
   const matches = text.match(pattern);
   return matches ? matches.length : 0;
 }
 
-function findMatches(text: string, pattern: RegExp): string[] {
-  const matches = text.match(pattern);
-  return matches ? Array.from(new Set(matches.map(m => m.toLowerCase().trim()))) : [];
+function findWordHits(text: string, wordList: string[]): string[] {
+  const lower = text.toLowerCase();
+  const hits: string[] = [];
+  for (const word of wordList) {
+    if (word.includes(" ")) {
+      if (lower.includes(word)) hits.push(word);
+    } else {
+      const regex = new RegExp(`\\b${word}\\b`, "i");
+      if (regex.test(lower)) hits.push(word);
+    }
+  }
+  return hits;
 }
 
-function analyzeDirectness(text: string): ScoreResult {
+function getSentenceLengthVariance(text: string): number {
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  if (sentences.length < 2) return 0;
+  const lengths = sentences.map(s => s.trim().split(/\s+/).length);
+  const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  const variance = lengths.reduce((acc, l) => acc + Math.pow(l - avg, 2), 0) / lengths.length;
+  return Math.sqrt(variance);
+}
+
+function getBurstiness(text: string): number {
+  const sd = getSentenceLengthVariance(text);
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  if (sentences.length < 2) return 0.5;
+  const lengths = sentences.map(s => s.trim().split(/\s+/).length);
+  const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  return avg > 0 ? sd / avg : 0;
+}
+
+// ============================================================
+// DIMENSION SCORERS
+// ============================================================
+
+function analyzeVocabulary(text: string): ScoreResult {
   const issues: string[] = [];
   let score = 10;
 
-  // Check for throat-clearing openers
-  const bannedFound = BANNED_PHRASES.filter(p => text.toLowerCase().includes(p));
-  if (bannedFound.length > 0) {
-    score -= Math.min(4, bannedFound.length);
-    issues.push(`Throat-clearing: "${bannedFound.slice(0, 3).join('", "')}"`);
-  }
+  const t1Hits = findWordHits(text, TIER_1_WORDS);
+  const t2Hits = findWordHits(text, TIER_2_WORDS);
+  const t3Hits = findWordHits(text, TIER_3_WORDS);
 
-  // Check for passive voice
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  if (sentences.length === 0) {
-    return { dimension: "Directness", score: Math.max(1, score), issues };
+  if (t1Hits.length > 0) {
+    const penalty = Math.min(6, t1Hits.length * 1.5);
+    score -= penalty;
+    issues.push(`T1 AI words (${t1Hits.length}): ${t1Hits.slice(0, 5).join(", ")}${t1Hits.length > 5 ? "..." : ""}`);
   }
-  const passiveCount = sentences.filter(s => 
-    PASSIVE_PATTERNS.some(p => p.test(s))
-  ).length;
-  if (passiveCount > sentences.length * 0.3) {
+  if (t2Hits.length > 0) {
+    const penalty = Math.min(4, t2Hits.length);
+    score -= penalty;
+    issues.push(`T2 AI words (${t2Hits.length}): ${t2Hits.slice(0, 5).join(", ")}${t2Hits.length > 5 ? "..." : ""}`);
+  }
+  if (t3Hits.length >= 3) {
     score -= 2;
-    issues.push(`${passiveCount} sentences use passive voice`);
+    issues.push(`T3 transition cluster (${t3Hits.length}): ${t3Hits.join(", ")}`);
   }
 
-  // Check for Wh- starters
-  const whStarters = sentences.filter(s => WH_STARTERS.test(s.trim())).length;
-  if (whStarters > sentences.length * 0.2) {
-    score -= 1;
-    issues.push(`${whStarters} sentences start with Wh- words`);
+  // Clinical formality check
+  const clinicalHits: string[] = [];
+  const lower = text.toLowerCase();
+  for (const phrase of Object.keys(CLINICAL_FORMALITY)) {
+    if (lower.includes(phrase)) clinicalHits.push(`${phrase} → ${CLINICAL_FORMALITY[phrase]}`);
+  }
+  if (clinicalHits.length > 0) {
+    score -= Math.min(2, clinicalHits.length);
+    issues.push(`Formal words: ${clinicalHits.slice(0, 3).join("; ")}`);
   }
 
-  // Check for vague declaratives
-  const vaguePatterns = [
-    /the (reasons|implications|effects|consequences|results) are/gi,
-    /this is (significant|important|crucial|vital)/gi,
-  ];
-  const vagueCount = vaguePatterns.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (vagueCount > 0) {
-    score -= Math.min(2, vagueCount);
-    issues.push(`${vagueCount} vague declaratives`);
+  return { dimension: "Vocabulary", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
+}
+
+function analyzeBannedPhrases(text: string): ScoreResult {
+  const issues: string[] = [];
+  let score = 10;
+
+  const hits = findWordHits(text, BANNED_PHRASES);
+  if (hits.length > 0) {
+    score -= Math.min(8, hits.length * 2);
+    issues.push(`Banned phrases (${hits.length}): ${hits.slice(0, 5).map(h => `"${h}"`).join(", ")}${hits.length > 5 ? "..." : ""}`);
   }
 
-  return { dimension: "Directness", score: Math.max(1, score), issues };
+  return { dimension: "Banned Phrases", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
+}
+
+function analyzeStructuralTells(text: string): ScoreResult {
+  const issues: string[] = [];
+  let score = 10;
+
+  for (const { name, pattern, severity } of STRUCTURAL_PATTERNS) {
+    const count = countMatches(text, pattern);
+    if (count > 0) {
+      const penalty = severity === "high" ? Math.min(3, count * 1.5) : severity === "medium" ? Math.min(2, count) : Math.min(1, count);
+      score -= penalty;
+      issues.push(`${name} (${count}x)`);
+    }
+  }
+
+  // Tricolon check — 3+ consecutive adjectives
+  const tricolonCount = countMatches(text, /\b\w+,\s*\w+,\s*and\s*\w+\b/g);
+  if (tricolonCount > 2) {
+    score -= 2;
+    issues.push(`Excessive tricolons (${tricolonCount}x)`);
+  }
+
+  return { dimension: "Structure", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
 }
 
 function analyzeRhythm(text: string): ScoreResult {
@@ -151,180 +354,112 @@ function analyzeRhythm(text: string): ScoreResult {
   let score = 10;
 
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  
-  // Guard: no sentences detected
   if (sentences.length === 0) {
-    return { dimension: "Rhythm", score: 5, issues: ["No sentence-ending punctuation detected"] };
+    return { dimension: "Rhythm", score: 5, maxScore: 10, severity: "low", issues: ["No sentences detected"] };
   }
 
-  // Check sentence length variation
+  // Sentence length variance
   const lengths = sentences.map(s => s.trim().split(/\s+/).length);
-  const avgLen = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-  const variance = lengths.reduce((acc, l) => acc + Math.pow(l - avgLen, 2), 0) / lengths.length;
-  
-  if (variance < 10) {
+  const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  const variance = lengths.reduce((acc, l) => acc + Math.pow(l - avg, 2), 0) / lengths.length;
+  const sd = Math.sqrt(variance);
+
+  if (sd < 5) {
+    score -= 3;
+    issues.push(`Sentence uniformity (SD: ${sd.toFixed(1)} words)`);
+  }
+
+  // Burstiness check
+  const burstiness = getBurstiness(text);
+  if (burstiness < 0.3) {
     score -= 2;
-    issues.push("Sentences too uniform in length");
+    issues.push(`Low burstiness (${burstiness.toFixed(2)}) — AI-typical rhythm`);
   }
 
-  // Check for three consecutive sentences of similar length
-  let similarStreak = 0;
-  for (let i = 2; i < lengths.length; i++) {
-    if (Math.abs(lengths[i] - lengths[i-1]) < 3 && Math.abs(lengths[i-1] - lengths[i-2]) < 3) {
-      similarStreak++;
-    }
-  }
-  if (similarStreak > 2) {
+  // Em dash overuse
+  const emDashes = countMatches(text, /—/g);
+  const words = text.split(/\s+/).length;
+  const emDashPer500 = (emDashes / words) * 500;
+  if (emDashPer500 >= 3) {
+    score -= 2;
+    issues.push(`${emDashes} em dashes (${emDashPer500.toFixed(1)} per 500 words)`);
+  } else if (emDashes > 0) {
     score -= 1;
-    issues.push(`${similarStreak} streaks of similar-length sentences`);
+    issues.push(`${emDashes} em dash(es)`);
   }
 
-  // Check for em dashes
-  const emDashes = countMatches(text, EM_DASH);
-  if (emDashes > 0) {
-    score -= Math.min(2, emDashes);
-    issues.push(`${emDashes} em dashes found`);
+  // Staccato fragment spam
+  const staccatoCount = countMatches(text, /\b\w+\.\s*\b\w+\.\s*\b\w+\./g);
+  if (staccatoCount > 0) {
+    score -= Math.min(3, staccatoCount * 1.5);
+    issues.push(`${staccatoCount} staccato fragment clusters`);
   }
 
-  // Check for dramatic fragmentation
-  const fragments = FRAGMENTATION.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (fragments > 0) {
-    score -= 1;
-    issues.push(`${fragments} dramatic fragments`);
-  }
-
-  // Check for adverb overuse (curated list + -ly pattern)
-  const adverbs = text.toLowerCase().split(/\s+/).filter(w => 
+  // Adverb overuse (curated + -ly pattern)
+  const adverbs = text.toLowerCase().split(/\s+/).filter(w =>
     COMMON_ADVERBS.includes(w.replace(/[^a-z]/g, ''))
   );
   const lyAdverbs = text.match(ADVERB_PATTERN) || [];
   const uniqueLyAdverbs = Array.from(new Set(lyAdverbs.map(a => a.toLowerCase())))
     .filter(a => !COMMON_ADVERBS.includes(a));
   const totalAdverbs = adverbs.length + uniqueLyAdverbs.length;
-  if (totalAdverbs > 3) {
-    score -= 1;
-    issues.push(`${totalAdverbs} adverbs (${adverbs.length} common, ${uniqueLyAdverbs.length} -ly)`);
+  if (totalAdverbs > 5) {
+    score -= 2;
+    issues.push(`${totalAdverbs} adverbs`);
   }
 
-  return { dimension: "Rhythm", score: Math.max(1, score), issues };
+  return { dimension: "Rhythm", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
 }
 
-function analyzeTrust(text: string): ScoreResult {
+function analyzeVoice(text: string): ScoreResult {
   const issues: string[] = [];
   let score = 10;
 
-  // Check for softening/hedging
-  const hedges = [
-    /\bperhaps\b/gi, /\bmight\b/gi, /\bcould be\b/gi, /\bit seems\b/gi,
-    /\bin some ways\b/gi, /\bto some extent\b/gi, /\bmore or less\b/gi,
-    /\bsort of\b/gi, /\bkind of\b/gi, /\bmaybe\b/gi,
-  ];
-  const hedgeCount = hedges.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (hedgeCount > 2) {
+  // Sycophancy detection
+  const sycophancyOpeners = /\b(great question|excellent question|excellent point|absolutely!|certainly!|of course!)\b/gi;
+  const sycophancyClosers = /\b(i hope this helps|let me know if you|feel free to reach out|don't hesitate|happy to clarify)\b/gi;
+  const sycCount = countMatches(text, sycophancyOpeners) + countMatches(text, sycophancyClosers);
+  if (sycCount > 0) {
+    score -= Math.min(3, sycCount * 1.5);
+    issues.push(`${sycCount} sycophantic phrases`);
+  }
+
+  // Hedge stacking
+  const hedges = /\b(perhaps|might|could be|it seems|sort of|kind of|maybe|generally speaking|to some extent|more or less)\b/gi;
+  const hedgeCount = countMatches(text, hedges);
+  if (hedgeCount > 3) {
     score -= 2;
-    issues.push(`${hedgeCount} hedging/softening phrases`);
+    issues.push(`${hedgeCount} hedging phrases`);
   }
 
-  // Check for hand-holding
-  const handHolding = [
-    /\bas you (can see|might know|probably)/gi,
-    /\bit's important to note/gi,
-    /\bkeep in mind\b/gi,
-    /\bremember that\b/gi,
-    /\bdon't forget\b/gi,
-  ];
-  const holdCount = handHolding.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (holdCount > 0) {
-    score -= Math.min(2, holdCount);
-    issues.push(`${holdCount} hand-holding phrases`);
-  }
-
-  // Check for lazy extremes
-  const lazyExtremes = [
-    /\bevery (single )?\w+ knows\b/gi,
-    /\balways\b/gi,
-    /\bnever\b/gi,
-    /\bno one\b/gi,
-    /\beveryone\b/gi,
-  ];
-  const extremeCount = lazyExtremes.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (extremeCount > 2) {
+  // Too balanced / no opinion
+  const balancePhrases = /\bon (the )?one hand\b/gi;
+  const balanceCount = countMatches(text, balancePhrases);
+  if (balanceCount > 1) {
     score -= 1;
-    issues.push(`${extremeCount} lazy extremes (always/never/everyone)`);
+    issues.push(`${balanceCount} both-sides-ism patterns`);
   }
 
-  // Check for permission-granting
-  const permission = [
-    /and that's okay/gi,
-    /and that's fine/gi,
-    /and that's valid/gi,
-    /it's okay to/gi,
-  ];
-  const permCount = permission.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (permCount > 0) {
-    score -= 1;
-    issues.push(`${permCount} permission-granting phrases`);
-  }
-
-  return { dimension: "Trust", score: Math.max(1, score), issues };
-}
-
-function analyzeAuthenticity(text: string): ScoreResult {
-  const issues: string[] = [];
-  let score = 10;
-
-  // Check for binary contrasts
-  const contrastCount = BINARY_CONTRASTS.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (contrastCount > 0) {
-    score -= Math.min(3, contrastCount);
-    issues.push(`${contrastCount} binary contrast patterns`);
-  }
-
-  // Check for negative listings
-  const negativeListings = countMatches(text, /not a .+\.\.\. not a .+\.\.\. a .+\./gi);
-  if (negativeListings > 0) {
+  // Performative openers
+  const performative = /\b(imagine a world|in today's fast-paced|as a society|we live in an age)\b/gi;
+  if (performative.test(text)) {
     score -= 2;
-    issues.push(`${negativeListings} negative listing patterns`);
+    issues.push("Performative opener detected");
   }
 
-  // Check for rhetorical setups
-  const rhetorical = [
-    /what if\b/gi,
-    /here's what i mean/gi,
-    /think about it/gi,
-    /can we talk about/gi,
-  ];
-  const rhetCount = rhetorical.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (rhetCount > 0) {
-    score -= Math.min(2, rhetCount);
-    issues.push(`${rhetCount} rhetorical setups`);
+  // Uniform paragraph length check
+  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  if (paragraphs.length > 3) {
+    const paraLengths = paragraphs.map(p => p.split(/\s+/).length);
+    const paraAvg = paraLengths.reduce((a, b) => a + b, 0) / paraLengths.length;
+    const paraVariance = paraLengths.reduce((acc, l) => acc + Math.pow(l - paraAvg, 2), 0) / paraLengths.length;
+    if (Math.sqrt(paraVariance) < 10) {
+      score -= 1;
+      issues.push("Uniform paragraph lengths");
+    }
   }
 
-  // Check for narrator-from-a-distance
-  const narrator = [
-    /nobody (designed|planned|expected|wanted)/gi,
-    /everybody (knows|thinks|believes)/gi,
-    /the (market|data|evidence) (tells|shows|suggests)/gi,
-  ];
-  const narratorCount = narrator.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (narratorCount > 0) {
-    score -= Math.min(2, narratorCount);
-    issues.push(`${narratorCount} narrator-from-a-distance phrases`);
-  }
-
-  // Check for meta-commentary
-  const meta = [
-    /the rest of this (essay|article|post)/gi,
-    /in this (article|post|essay)/gi,
-    /as i (mentioned|wrote|said) (earlier|before|above)/gi,
-  ];
-  const metaCount = meta.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (metaCount > 0) {
-    score -= Math.min(2, metaCount);
-    issues.push(`${metaCount} meta-commentary phrases`);
-  }
-
-  return { dimension: "Authenticity", score: Math.max(1, score), issues };
+  return { dimension: "Voice", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
 }
 
 function analyzeDensity(text: string): ScoreResult {
@@ -332,118 +467,192 @@ function analyzeDensity(text: string): ScoreResult {
   let score = 10;
 
   const words = text.split(/\s+/).length;
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0).length;
-  const avgWordsPerSentence = sentences === 0 ? 0 : words / sentences;
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const sentenceCount = sentences.length;
+  const avgWordsPerSentence = sentenceCount === 0 ? 0 : words / sentenceCount;
 
-  // Check for overly long sentences
+  // Long sentences
   if (avgWordsPerSentence > 25) {
     score -= 2;
-    issues.push(`Average sentence length ${Math.round(avgWordsPerSentence)} words (too long)`);
+    issues.push(`Avg sentence length ${Math.round(avgWordsPerSentence)} words (too long)`);
   }
 
-  // Check for filler words
-  const fillers = [
-    /\bvery\b/gi, /\breally\b/gi, /\bjust\b/gi, /\bbasically\b/gi,
-    /\bactually\b/gi, /\bliterally\b/gi, /\bpractically\b/gi,
-    /\bessentially\b/gi, /\bfundamentally\b/gi,
-  ];
-  const fillerCount = fillers.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (fillerCount > 3) {
+  // Passive voice
+  const passiveCount = sentences.filter(s =>
+    PASSIVE_PATTERNS.some(p => p.test(s))
+  ).length;
+  const passivePercent = sentenceCount > 0 ? (passiveCount / sentenceCount) * 100 : 0;
+  if (passivePercent > 15) {
+    score -= 2;
+    issues.push(`${passivePercent.toFixed(0)}% passive voice`);
+  } else if (passivePercent > 10) {
+    score -= 1;
+    issues.push(`${passivePercent.toFixed(0)}% passive voice`);
+  }
+
+  // Filler words
+  const fillers = /\b(very|really|just|basically|actually|literally|practically|essentially|fundamentally)\b/gi;
+  const fillerCount = countMatches(text, fillers);
+  if (fillerCount > 5) {
     score -= 2;
     issues.push(`${fillerCount} filler words`);
   }
 
-  // Check for redundant phrases
-  const redundant = [
-    /\bin order to\b/gi, /\bdue to the fact that\b/gi,
-    /\bat this point in time\b/gi, /\bin the event that\b/gi,
-    /\bfor the purpose of\b/gi, /\bin the process of\b/gi,
-  ];
-  const redundantCount = redundant.reduce((acc, p) => acc + countMatches(text, p), 0);
+  // Buzzword stacking (3+ in one paragraph)
+  const buzzwords = /\b(scalable|repeatable|defensible|mission-critical|enterprise-grade|world-class|best-in-class|robust|seamless|innovative|cutting-edge|state-of-the-art|synergy|holistic|next-generation|transformative|groundbreaking|comprehensive|multifaceted)\b/gi;
+  const paragraphs = text.split(/\n\s*\n/);
+  for (const para of paragraphs) {
+    const buzzCount = countMatches(para, buzzwords);
+    if (buzzCount >= 3) {
+      score -= 2;
+      issues.push(`Buzzword stacking (${buzzCount} in one paragraph)`);
+      break;
+    }
+  }
+
+  // Redundant phrases
+  const redundant = /\b(in order to|due to the fact that|at this point in time|in the event that|for the purpose of|in the process of)\b/gi;
+  const redundantCount = countMatches(text, redundant);
   if (redundantCount > 0) {
     score -= Math.min(2, redundantCount);
     issues.push(`${redundantCount} redundant phrases`);
   }
 
-  // Check for business jargon
-  const jargon = [
-    /\bnavigate\b/gi, /\bunpack\b/gi, /\blean into\b/gi,
-    /\blandscape\b/gi, /\bgame-changer\b/gi, /\bdouble down\b/gi,
-    /\bdeep dive\b/gi, /\bcircle back\b/gi, /\bon the same page\b/gi,
-    /\bmoving forward\b/gi, /\btake a step back\b/gi,
-  ];
-  const jargonCount = jargon.reduce((acc, p) => acc + countMatches(text, p), 0);
-  if (jargonCount > 0) {
-    score -= Math.min(2, jargonCount);
-    issues.push(`${jargonCount} business jargon terms`);
+  return { dimension: "Density", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
+}
+
+function analyzeFormatting(text: string): ScoreResult {
+  const issues: string[] = [];
+  let score = 10;
+
+  for (const { name, check, severity } of FORMATTING_TELLS) {
+    if (check(text)) {
+      const penalty = severity === "high" ? 2 : severity === "medium" ? 1 : 0.5;
+      score -= penalty;
+      issues.push(name);
+    }
   }
 
-  return { dimension: "Density", score: Math.max(1, score), issues };
+  // Section structure: intro → 3-5 H2s → conclusion
+  const h2Count = (text.match(/^##\s/gm) || []).length;
+  const hasConclusion = /^#{1,3}\s*(in conclusion|to (summarize|wrap up|conclude))/gim.test(text);
+  if (h2Count >= 3 && hasConclusion) {
+    score -= 1;
+    issues.push(`Formulaic structure (${h2Count} H2s + conclusion)`);
+  }
+
+  // Uniform paragraph length
+  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 20);
+  if (paragraphs.length > 3) {
+    const paraLengths = paragraphs.map(p => p.split(/\s+/).length);
+    const paraAvg = paraLengths.reduce((a, b) => a + b, 0) / paraLengths.length;
+    const allSimilar = paraLengths.every(l => Math.abs(l - paraAvg) < 15);
+    if (allSimilar) {
+      score -= 1;
+      issues.push("Uniform paragraph lengths across sections");
+    }
+  }
+
+  return { dimension: "Formatting", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
 }
+
+// ============================================================
+// MAIN ANALYSIS
+// ============================================================
 
 export function analyzeText(text: string): AnalysisResult {
   if (!text.trim()) {
     return {
       scores: [
-        { dimension: "Directness", score: 0, issues: [] },
-        { dimension: "Rhythm", score: 0, issues: [] },
-        { dimension: "Trust", score: 0, issues: [] },
-        { dimension: "Authenticity", score: 0, issues: [] },
-        { dimension: "Density", score: 0, issues: [] },
+        { dimension: "Vocabulary", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Banned Phrases", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Structure", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Rhythm", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Voice", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Density", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Formatting", score: 0, maxScore: 10, severity: "low", issues: [] },
       ],
-      total: 0,
-      bannedPhrases: [],
-      adverbs: [],
-      passiveVoice: [],
-      structuralIssues: [],
-      suggestions: [],
+      total: 0, maxTotal: 70,
+      tier1Hits: [], tier2Hits: [], tier3Hits: [],
+      structuralTells: [], formattingTells: [],
+      modelFingerprints: [], passiveVoice: [],
+      suggestions: [], density: 0,
     };
   }
 
   const scores = [
-    analyzeDirectness(text),
+    analyzeVocabulary(text),
+    analyzeBannedPhrases(text),
+    analyzeStructuralTells(text),
     analyzeRhythm(text),
-    analyzeTrust(text),
-    analyzeAuthenticity(text),
+    analyzeVoice(text),
     analyzeDensity(text),
+    analyzeFormatting(text),
   ];
 
   const total = scores.reduce((acc, s) => acc + s.score, 0);
+  const maxTotal = scores.reduce((acc, s) => acc + s.maxScore, 0);
 
-  // Collect all issues
-  const bannedPhrases = BANNED_PHRASES.filter(p => text.toLowerCase().includes(p));
-  const adverbs = COMMON_ADVERBS.filter(a => text.toLowerCase().includes(a));
-  const passiveVoice = findMatches(text, /\b(is|are|was|were|be|been|being)\s+\w+ed\b/gi);
-  const structuralIssues = BINARY_CONTRASTS.reduce((acc, p) => [...acc, ...findMatches(text, p)], [] as string[]);
+  // Collect tier hits
+  const tier1Hits = findWordHits(text, TIER_1_WORDS);
+  const tier2Hits = findWordHits(text, TIER_2_WORDS);
+  const tier3Hits = findWordHits(text, TIER_3_WORDS);
 
-  // Generate suggestions
+  // Structural tells
+  const structuralTells: string[] = [];
+  for (const { name, pattern } of STRUCTURAL_PATTERNS) {
+    const count = countMatches(text, pattern);
+    if (count > 0) structuralTells.push(`${name} (${count}x)`);
+  }
+
+  // Formatting tells
+  const formattingTells: string[] = [];
+  for (const { name, check } of FORMATTING_TELLS) {
+    if (check(text)) formattingTells.push(name);
+  }
+
+  // Model fingerprints
+  const modelFingerprints: { model: string; matches: string[] }[] = [];
+  for (const [model, patterns] of Object.entries(MODEL_FINGERPRINTS)) {
+    const matches: string[] = [];
+    for (const p of patterns) {
+      const found = text.match(p);
+      if (found) matches.push(...found);
+    }
+    if (matches.length > 0) {
+      modelFingerprints.push({ model, matches: Array.from(new Set(matches.map(m => m.toLowerCase()))) });
+    }
+  }
+
+  // Passive voice
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const passiveVoice = sentences
+    .filter(s => PASSIVE_PATTERNS.some(p => p.test(s)))
+    .map(s => s.trim().substring(0, 60))
+    .slice(0, 5);
+
+  // Density score
+  const words = text.split(/\s+/).length;
+  const highHits = tier1Hits.length + structuralTells.filter(t => t.includes("high")).length;
+  const medHits = tier2Hits.length;
+  const lowHits = tier3Hits.length;
+  const density = words > 0 ? ((highHits * 3) + (medHits * 1) + (lowHits * 0.25)) / (words / 500) : 0;
+
+  // Suggestions
   const suggestions: string[] = [];
-  if (total < 35) {
-    suggestions.push("Score below 35. Major revision needed.");
-  }
-  if (bannedPhrases.length > 0) {
-    suggestions.push(`Remove ${bannedPhrases.length} banned phrases.`);
-  }
-  if (adverbs.length > 3) {
-    suggestions.push(`Cut ${adverbs.length} adverbs. Use strong verbs instead.`);
-  }
-  if (passiveVoice.length > 2) {
-    suggestions.push(`Convert ${passiveVoice.length} passive constructions to active voice.`);
-  }
-  if (structuralIssues.length > 0) {
-    suggestions.push(`Fix ${structuralIssues.length} structural clichés.`);
-  }
-  if (suggestions.length === 0) {
-    suggestions.push("Text looks clean. Good work.");
-  }
+  if (total < 35) suggestions.push("Score below 35. Major revision needed.");
+  if (tier1Hits.length > 3) suggestions.push(`Remove ${tier1Hits.length} Tier 1 AI words first.`);
+  if (structuralTells.length > 3) suggestions.push(`Fix ${structuralTells.length} structural patterns.`);
+  if (density > 10) suggestions.push(`AI-slop density is HIGH (${density.toFixed(1)}). Rewrite recommended.`);
+  if (modelFingerprints.length > 0) suggestions.push(`Detected ${modelFingerprints.map(m => m.model).join(", ")} fingerprints.`);
+  if (passiveVoice.length > 3) suggestions.push(`Convert ${passiveVoice.length} passive constructions.`);
+  if (suggestions.length === 0) suggestions.push("Text looks clean. Good work.");
 
   return {
-    scores,
-    total,
-    bannedPhrases,
-    adverbs,
-    passiveVoice,
-    structuralIssues,
-    suggestions,
+    scores, total, maxTotal,
+    tier1Hits, tier2Hits, tier3Hits,
+    structuralTells, formattingTells,
+    modelFingerprints, passiveVoice,
+    suggestions, density,
   };
 }

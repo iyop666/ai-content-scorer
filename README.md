@@ -4,47 +4,58 @@ Paste your text. Get scored. Fix AI patterns.
 
 ## What is this?
 
-AI Content Scorer analyzes your writing and detects common AI-generated patterns, structural cliches, and weak prose. It scores your text on 5 dimensions based on the [stop-slop](https://github.com/hardikpandya/stop-slop) framework by Hardik Pandya.
+AI Content Scorer analyzes your writing and detects common AI-generated patterns, structural cliches, and weak prose. It scores your text on 7 dimensions and can identify which AI model likely generated the text (GPT, Claude, Gemini).
 
-If you write blog posts, articles, or technical content, this tool tells you exactly what to fix before you publish.
+Built by merging detection rules from 4 open-source projects:
+- [stop-slop](https://github.com/hardikpandya/stop-slop) — 29 banned phrases
+- [claude-slop-detector](https://github.com/aplaceforallmystuff/claude-slop-detector) — 3-tier scoring, structural tells
+- [humanize-writing-skill](https://github.com/lguz/humanize-writing-skill) — 51 banned words, 10 structural patterns
+- [slop-cop](https://github.com/MahmoudHalat/slop-cop) — 45 rhetorical patterns, ~150 vocabulary tells, dual-axis scoring
 
-## How it works
-
-Paste your text and hit **Score It**. The tool runs regex-based analysis across 5 dimensions:
+## Scoring Dimensions
 
 | Dimension | What it checks |
 |-----------|---------------|
-| **Directness** | Throat-clearing openers, passive voice, vague declaratives |
-| **Rhythm** | Sentence length variation, em dashes, dramatic fragmentation, adverb overuse |
-| **Trust** | Hedging, hand-holding, lazy extremes, permission-granting |
-| **Authenticity** | Binary contrasts, rhetorical setups, narrator-from-a-distance, meta-commentary |
-| **Density** | Sentence length, filler words, redundant phrases, business jargon |
+| **Vocabulary** | 50+ T1 AI words, 35+ T2 words, T3 transition clusters, clinical formality |
+| **Banned Phrases** | 80+ throat-clearing openers, sycophantic phrases, rhetorical setups |
+| **Structure** | 15 structural patterns: negative parallelism, tricolons, fabricated case studies, vague authority |
+| **Rhythm** | Sentence uniformity, burstiness, em-dash overuse, staccato fragments, adverb overuse |
+| **Voice** | Sycophancy, hedge stacking, performative openers, both-sides-ism, uniform paragraphs |
+| **Density** | Sentence length, passive voice %, filler words, buzzword stacking, redundant phrases |
+| **Formatting** | Bold bullets, emoji headers, listicles, formulaic structures, colon-pattern titles |
 
-Each dimension scores 1-10. Total score: 50.
+Each dimension scores 1-10. Total score: 70.
 
 **Score interpretation:**
-- 40-50: Clean. Ready to publish.
-- 30-39: Needs work. Check issues below.
-- Below 30: Heavy AI patterns. Major revision needed.
+- 50-70: Clean. Ready to publish.
+- 35-49: Needs work. Check issues below.
+- 20-34: Heavy AI patterns. Significant editing required.
+- Below 20: Extreme AI slop. Full rewrite recommended.
 
-## What gets flagged
+## Special Features
 
-- **Banned phrases** (29 patterns): "here's the thing", "let that sink in", "it turns out", "the uncomfortable truth is", etc.
-- **Passive voice**: "is built", "was created", "are being used"
-- **Common adverbs**: "really", "just", "literally", "genuinely", "honestly", "simply", "actually", etc.
-- **-ly adverbs**: Any word ending in -ly not in the curated list
-- **Structural cliches**: "not because X. because Y.", "the answer isn't X, it's Y"
-- **Business jargon**: "game-changer", "deep dive", "circle back", "lean into", "navigate the landscape"
-- **Filler words**: "very", "really", "just", "basically", "actually", "literally"
-- **Redundant phrases**: "in order to", "due to the fact that", "at this point in time"
+### Model Fingerprint Detection
+Identifies which AI model likely generated the text based on vocabulary patterns:
+- **GPT markers**: delve, underscore, commendable, meticulous, groundbreaking
+- **Claude markers**: meaningfully, "the distinction is worth examining", "I notice that"
+- **Gemini markers**: "the way for", "the cascade of", "let's explore"
 
-## Try it
+### Slop Density Score
+Uses the density formula from slop-cop: `(H×3 + M×1 + L×0.25) / 500 words`
+- 0-2: PASS
+- 2-5: LOW
+- 5-10: MEDIUM
+- 10-18: HIGH
+- 18+: CRITICAL
 
-**Load Sample** button shows a demo with intentionally bad AI-isms so you can see how the scoring works.
+### Tiered Severity System
+- **Tier 1** (strongest AI signals): delve, tapestry, leverage, pivotal, groundbreaking, etc.
+- **Tier 2** (moderate): crucial, vibrant, foster, holistic, innovative, dynamic, etc.
+- **Tier 3** (transitions): furthermore, moreover, additionally, consequently, etc.
 
 ## Stack
 
-- Next.js 15
+- Next.js 16
 - React 19
 - Tailwind CSS 4
 - shadcn/ui
@@ -67,7 +78,11 @@ Open http://localhost:3000
 
 ## Credits
 
-Scoring logic based on [stop-slop](https://github.com/hardikpandya/stop-slop) by [Hardik Pandya](https://github.com/hardikpandya).
+Detection rules merged from:
+- [stop-slop](https://github.com/hardikpandya/stop-slop) by [Hardik Pandya](https://github.com/hardikpandya)
+- [claude-slop-detector](https://github.com/aplaceforallmystuff/claude-slop-detector)
+- [humanize-writing-skill](https://github.com/lguz/humanize-writing-skill)
+- [slop-cop](https://github.com/MahmoudHalat/slop-cop)
 
 ## License
 
