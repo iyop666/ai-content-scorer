@@ -86,7 +86,7 @@ export default function Home() {
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">AI Content Scorer</h1>
           <p className="text-muted-foreground">
-            Your text is more AI than you think.
+            Your competitors use AI too.
           </p>
         </div>
 
@@ -296,7 +296,7 @@ export default function Home() {
 
         {/* Footer */}
         <div className="text-center text-sm text-muted-foreground">
-          Because AI shouldn't write like AI.
+          Make sure yours doesn't sound like it.
         </div>
       </div>
     </div>
