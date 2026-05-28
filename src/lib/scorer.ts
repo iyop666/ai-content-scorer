@@ -722,6 +722,184 @@ function analyzeFormatting(text: string): ScoreResult {
   return { dimension: "Formatting", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
 }
 
+function analyzeReadability(text: string): ScoreResult {
+  const issues: string[] = [];
+  let score = 10;
+
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const words = text.split(/\s+/).length;
+
+  // Wall-of-text paragraphs (no line breaks)
+  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
+  const longParas = paragraphs.filter(p => p.split(/\s+/).length > 100);
+  if (longParas.length > 0) {
+    score -= 2;
+    issues.push(`${longParas.length} paragraph(s) over 100 words (wall-of-text)`);
+  }
+
+  // Average sentence length
+  if (sentences.length > 0) {
+    const avgLen = words / sentences.length;
+    if (avgLen > 30) {
+      score -= 2;
+      issues.push(`Avg sentence ${Math.round(avgLen)} words (too long, aim for 15-20)`);
+    } else if (avgLen > 25) {
+      score -= 1;
+      issues.push(`Avg sentence ${Math.round(avgLen)} words (getting long)`);
+    }
+  }
+
+  // Passive voice ratio
+  const passiveCount = sentences.filter(s =>
+    PASSIVE_PATTERNS.some(p => p.test(s))
+  ).length;
+  const passivePercent = sentences.length > 0 ? (passiveCount / sentences.length) * 100 : 0;
+  if (passivePercent > 20) {
+    score -= 2;
+    issues.push(`${passivePercent.toFixed(0)}% passive voice (aim for <10%)`);
+  } else if (passivePercent > 10) {
+    score -= 1;
+    issues.push(`${passivePercent.toFixed(0)}% passive voice`);
+  }
+
+  // No subheadings in long text
+  const h2Count = (text.match(/^##\s/gm) || []).length;
+  if (words > 500 && h2Count === 0) {
+    score -= 2;
+    issues.push("500+ words with no subheadings (hard to scan)");
+  }
+
+  // Single-sentence paragraphs (AI likes these)
+  const singleSentenceParas = paragraphs.filter(p => {
+    const paraSentences = p.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    return paraSentences.length === 1;
+  });
+  if (singleSentenceParas.length > paragraphs.length * 0.5 && paragraphs.length > 3) {
+    score -= 1;
+    issues.push(`${singleSentenceParas.length}/${paragraphs.length} paragraphs are single sentences`);
+  }
+
+  return { dimension: "Readability", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
+}
+
+function analyzeOriginality(text: string): ScoreResult {
+  const issues: string[] = [];
+  let score = 10;
+
+  // Repeated cliches/metaphors
+  const clicheMetaphors = /\b(tapestry|journey|landscape|realm|labyrinth|symphony|beacon|cornerstone|foundation|backbone|heartbeat|lifeblood)\b/gi;
+  const metaphorCount = countMatches(text, clicheMetaphors);
+  if (metaphorCount > 2) {
+    score -= 2;
+    issues.push(`${metaphorCount} overused metaphors`);
+  }
+
+  // Template patterns (AI fills these in)
+  const templatePatterns = [
+    /\bin today's (fast-paced|digital|modern|ever-changing)\b/gi,
+    /\b(play|plays|playing) a (significant|crucial|vital|key) role\b/gi,
+    /\b(it's|it is) (important|crucial|essential|vital) to (note|understand|remember|recognize)\b/gi,
+    /\b(when it comes to|in terms of|with regards to)\b/gi,
+    /\b(at the end of the day|ultimately|in the grand scheme)\b/gi,
+  ];
+  let templateHits = 0;
+  for (const p of templatePatterns) {
+    templateHits += countMatches(text, p);
+  }
+  if (templateHits > 2) {
+    score -= 2;
+    issues.push(`${templateHits} template patterns (AI fills these in)`);
+  }
+
+  // Same word repeated too many times
+  const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+  const wordFreq: Record<string, number> = {};
+  for (const w of words) {
+    const clean = w.replace(/[^a-z]/g, '');
+    if (clean.length > 4) wordFreq[clean] = (wordFreq[clean] || 0) + 1;
+  }
+  const overused = Object.entries(wordFreq)
+    .filter(([_, count]) => count > 5)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  if (overused.length > 0) {
+    score -= Math.min(2, overused.length);
+    issues.push(`Overused words: ${overused.map(([w, c]) => `"${w}" (${c}x)`).join(", ")}`);
+  }
+
+  // Generic conclusions
+  const genericConclusions = [
+    /\b(ultimately|in the end|at the end of the day)\b.{10,60}\b(balance|right|best|important)\b/gi,
+    /\b(the key (takeaway|lesson|point))\b/gi,
+    /\b(what matters (most|the most))\b/gi,
+  ];
+  let genericCount = 0;
+  for (const p of genericConclusions) {
+    genericCount += countMatches(text, p);
+  }
+  if (genericCount > 0) {
+    score -= Math.min(2, genericCount);
+    issues.push(`${genericCount} generic conclusion(s)`);
+  }
+
+  return { dimension: "Originality", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
+}
+
+function analyzeSpecificity(text: string): ScoreResult {
+  const issues: string[] = [];
+  let score = 10;
+
+  // Count specific numbers/dates
+  const specificNumbers = text.match(/\b\d+(\.\d+)?(%|k|K|M|B|USD|Rp|IDR|\$|€|£)?\b/g) || [];
+  const wordCount = text.split(/\s+/).length;
+  const numberRatio = specificNumbers.length / (wordCount / 100);
+
+  if (wordCount > 100 && specificNumbers.length === 0) {
+    score -= 2;
+    issues.push("Zero specific numbers in 100+ word text");
+  } else if (numberRatio < 1 && wordCount > 200) {
+    score -= 1;
+    issues.push(`Only ${specificNumbers.length} specific numbers in ${wordCount} words`);
+  }
+
+  // Vague quantifiers (AI loves these)
+  const vagueQuantifiers = /\b(many|some|several|various|numerous|a lot of|lots of|plenty of|a number of|a variety of)\b/gi;
+  const vagueCount = countMatches(text, vagueQuantifiers);
+  if (vagueCount > 3) {
+    score -= 2;
+    issues.push(`${vagueCount} vague quantifiers (use specific numbers instead)`);
+  }
+
+  // Generic examples vs specific ones
+  const genericExamples = /\b(for example|for instance|such as|like)\b/gi;
+  const specificExamples = /\b(take .+ who|when .+ tried|back in \d{4}|last (week|month|year)|in \d{4})\b/gi;
+  const genericCount = countMatches(text, genericExamples);
+  const specificCount = countMatches(text, specificExamples);
+
+  if (genericCount > 2 && specificCount === 0) {
+    score -= 2;
+    issues.push(`${genericCount} generic examples but zero specific anecdotes`);
+  }
+
+  // Abstract nouns without concrete referents
+  const abstractNouns = /\b(success|failure|growth|innovation|disruption|transformation|excellence|quality|impact|value)\b/gi;
+  const abstractCount = countMatches(text, abstractNouns);
+  if (abstractCount > 5) {
+    score -= 1;
+    issues.push(`${abstractCount} abstract nouns without concrete examples`);
+  }
+
+  // "People" / "things" / "stuff" instead of specifics
+  const vagueNouns = /\b(people|things|stuff|something|everything|nothing|anything)\b/gi;
+  const vagueNounCount = countMatches(text, vagueNouns);
+  if (vagueNounCount > 5) {
+    score -= 1;
+    issues.push(`${vagueNounCount} vague nouns (people, things, stuff)`);
+  }
+
+  return { dimension: "Specificity", score: Math.max(1, score), maxScore: 10, severity: score <= 4 ? "critical" : score <= 6 ? "high" : score <= 8 ? "medium" : "low", issues };
+}
+
 // ============================================================
 // MAIN ANALYSIS
 // ============================================================
@@ -737,6 +915,9 @@ export function analyzeText(text: string): AnalysisResult {
         { dimension: "Voice", score: 0, maxScore: 10, severity: "low", issues: [] },
         { dimension: "Density", score: 0, maxScore: 10, severity: "low", issues: [] },
         { dimension: "Formatting", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Readability", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Originality", score: 0, maxScore: 10, severity: "low", issues: [] },
+        { dimension: "Specificity", score: 0, maxScore: 10, severity: "low", issues: [] },
       ],
       total: 0, maxTotal: 70, language: "en",
       tier1Hits: [], tier2Hits: [], tier3Hits: [],
@@ -756,6 +937,9 @@ export function analyzeText(text: string): AnalysisResult {
     analyzeVoice(text),
     analyzeDensity(text),
     analyzeFormatting(text),
+    analyzeReadability(text),
+    analyzeOriginality(text),
+    analyzeSpecificity(text),
   ];
 
   const total = scores.reduce((acc, s) => acc + s.score, 0);
