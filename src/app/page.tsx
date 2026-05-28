@@ -86,10 +86,7 @@ export default function Home() {
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">AI Content Scorer</h1>
           <p className="text-muted-foreground">
-            Paste your text. Get scored on 7 dimensions. Fix AI patterns.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Based on stop-slop, claude-slop-detector, humanize-writing-skill, and slop-cop
+            Your text is more AI than you think.
           </p>
         </div>
 
@@ -298,14 +295,8 @@ export default function Home() {
         )}
 
         {/* Footer */}
-        <div className="text-center text-sm text-muted-foreground space-y-1">
-          <p>
-            Based on{" "}
-            <a href="https://github.com/hardikpandya/stop-slop" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">stop-slop</a>,{" "}
-            <a href="https://github.com/aplaceforallmystuff/claude-slop-detector" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">claude-slop-detector</a>,{" "}
-            <a href="https://github.com/lguz/humanize-writing-skill" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">humanize-writing-skill</a>,{" "}
-            <a href="https://github.com/MahmoudHalat/slop-cop" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">slop-cop</a>
-          </p>
+        <div className="text-center text-sm text-muted-foreground">
+          Because AI shouldn't write like AI.
         </div>
       </div>
     </div>
